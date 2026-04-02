@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>මගේ රහස් දිනපොත | My Secret Journal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Abhaya+Libre:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cover: #4e342e;
+            --paper: #fdfaf1;
+            --ink: #2c3e50;
+            --accent: #8b4513;
+            --secondary: #5d4037;
+            --success: #27ae60;
+            --error: #e74c3c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #1a1a1a;
+            background-image: url('https://www.transparenttextures.com/patterns/dark-wood.png');
+            font-family: 'Abhaya Libre', serif;
+            min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+            color: var(--ink);
+            padding-top: 80px;
+        }
+
+        /* --- Header Fix --- */
+        .top-bar {
+            width: 100%; background: rgba(0,0,0,0.9); padding: 10px 20px;
+            color: white; position: fixed; top: 0; left: 0; z-index: 1000;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .lang-btn { background: #d35400; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+
+        /* --- Search Bar Section --- */
+        .search-section {
+            background: rgba(255,255,255,0.9); padding: 12px; border-radius: 12px;
+            width: 90%; max-width: 800px; display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .search-section input { flex: 1; min-width: 120px; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+
+        /* --- Main Diary UI --- */
+        #app-box { display: none; width: 100%; flex-direction: column; align-items: center; gap: 20px; }
+        
+        .diary-wrapper { 
+            display: flex; gap: 20px; width: 95%; max-width: 1100px; 
+            justify-content: center; flex-wrap: wrap; 
+        }
+
+        /* --- Writing Side --- */
+        .diary-page {
+            width: 100%; max-width: 480px; height: 580px;
+            background: var(--paper); padding: 40px; border-radius: 5px 20px 20px 5px;
+            box-shadow: 5px 10px 20px rgba(0,0,0,0.3); position: relative;
+        }
+
+        .lined-content {
+            background-image: repeating-linear-gradient(transparent, transparent 31px, #7fb3d5 31px, #7fb3d5 32px);
+            line-height: 32px; width: 100%; height: 380px; border: none; background-color: transparent;
+            font-size: 21px; font-family: inherit; outline: none; resize: none;
+        }
+
+        /* --- Reading Side (The Book) --- */
+        .book-container { 
+            width: 100%; max-width: 480px; height: 580px; 
+            position: relative; perspective: 1500px;
+        }
+
+        .flip-page {
+            width: 100%; height: 100%; position: absolute; background: var(--paper);
+            padding: 40px; border: 1px solid #ddd; backface-visibility: hidden;
+            transform-origin: left; transition: transform 0.8s ease; border-radius: 0 15px 15px 0;
+            box-shadow: inset 10px 0 20px rgba(0,0,0,0.05); overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+
+        /* --- Auth Section --- */
+        .book-wrapper { width: 90%; max-width: 500px; background: var(--cover); border-radius: 15px; padding: 40px; text-align: center; }
+        .book-wrapper.open { max-width: 100%; background: transparent; padding: 0; }
+
+        /* --- UI Elements --- */
+        .btn { padding: 10px 20px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-primary { background: var(--accent); color: white; margin-top: 10px; width: 100%; }
+        .btn-nav { background: white; color: var(--accent); border: 2px solid var(--accent); }
+        .delete-btn { color: var(--error); cursor: pointer; font-size: 14px; margin-top: auto; font-weight: bold; }
+
+        #toast {
+            position: fixed; top: 90px; right: 20px; padding: 12px 25px;
+            border-radius: 8px; color: white; z-index: 2000;
+            transform: translateX(200%); transition: 0.5s;
+        }
+        #toast.show { transform: translateX(0); }
+
+        #confirm-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            z-index: 3000; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div id="confirm-modal">
+    <div style="background: var(--paper); padding: 30px; border-radius: 15px; text-align: center;">
+        <h3 id="confirmMsg">මකන්නද?</h3>
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+            <button class="btn" style="background: var(--error); color: white;" id="confirmYesBtn">ඔව්</button>
+            <button class="btn" style="background: #ccc;" onclick="closeModal()">නැත</button>
+        </div>
+    </div>
+</div>
+
+<header class="top-bar">
+    <div style="font-weight: bold;" id="diaryLogoHeader">My Digital Journal | මගේ දිනපොත</div>
+    <button class="lang-btn" onclick="toggleLanguage()" id="langBtn">English</button>
+</header>
+
+<div class="book-wrapper" id="bookWrapper">
+    <div class="auth-container" id="auth-box">
+        <h1 style="color: #f1c40f; font-size: 50px; margin-bottom: 20px;" id="diaryMainLogo">රහස් දිනපොත</h1>
+        <input type="email" id="email" placeholder="Email" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px;">
+        <input type="password" id="password" placeholder="Password" style="width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 8px;">
+        <button class="btn btn-primary" onclick="login()">ඇතුළු වන්න</button>
+        <p onclick="signUp()" style="margin-top: 15px; color: #f1c40f; cursor: pointer; text-decoration: underline;">Register New Account</p>
+    </div>
+
+    <div id="app-box">
+        <div class="search-section">
+            <input type="date" id="searchDate">
+            <input type="text" id="searchText" placeholder="සොයන්න...">
+            <button class="btn btn-nav" onclick="searchLogs()">Go</button>
+            <button class="btn btn-nav" onclick="loadData(currentUserId)">All</button>
+        </div>
+
+        <div class="diary-wrapper">
+            <div class="diary-page">
+                <div style="font-weight: bold; color: var(--accent); margin-bottom: 10px;" id="todayDisplay"></div>
+                <h3 id="writeLabel">අද මතකය...</h3>
+                <textarea id="myData" class="lined-content" placeholder="මෙහි ලියන්න..."></textarea>
+                <button class="btn btn-primary" onclick="saveData()" id="saveBtn">පොතේ සුරකින්න</button>
+            </div>
+            <div class="book-container" id="bookContainer">
+                </div>
+        </div>
+
+        <div style="display: flex; gap: 15px; margin-bottom: 40px;">
+            <button class="btn btn-nav" onclick="prevPage()">⬅ කලින්</button>
+            <button class="btn btn-nav" onclick="nextPage()">ඊළඟ ➡</button>
+            <button onclick="logout()" class="btn" style="background: var(--error); color: white;">Logout</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://zcirkdcrvjekqjkobapm.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjaXJrZGNydmpla3Fqa29iYXBtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNDg2NTcsImV4cCI6MjA5MDYyNDY1N30.Xq_bvMYC1YE0gI5HXMkgS3F4B5DZ5TxrwTUgzbPqhEY';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentUserId = null, allEntries = [], currentPageIndex = 0, language = 'si';
+    let entryToDelete = null;
+
+    const trans = {
+        si: { logo: "රහස් දිනපොත", write: "අද මතකය...", save: "පොතේ සුරකින්න", deleted: "මැකුවා!" },
+        en: { logo: "Secret Diary", write: "Today's Memory...", save: "Save Entry", deleted: "Deleted!" }
+    };
+
+    function showToast(msg, type = 'success') {
+        const t = document.getElementById('toast');
+        t.innerText = msg;
+        t.style.background = type === 'success' ? '#27ae60' : '#e74c3c';
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function toggleLanguage() {
+        language = (language === 'si') ? 'en' : 'si';
+        document.getElementById('langBtn').innerText = language === 'si' ? 'English' : 'සිංහල';
+        document.getElementById('diaryMainLogo').innerText = trans[language].logo;
+        document.getElementById('writeLabel').innerText = trans[language].write;
+        document.getElementById('saveBtn').innerText = trans[language].save;
+        updateDateDisplay();
+        renderBook(allEntries);
+    }
+
+    function updateDateDisplay() {
+        const opt = { year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('todayDisplay').innerText = new Date().toLocaleDateString(language === 'si' ? 'si-LK' : 'en-US', opt);
+    }
+
+    async function login() {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+        if (error) showToast(error.message, 'error'); else showApp(data.user);
+    }
+
+    async function signUp() {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const { error } = await _supabase.auth.signUp({ email, password });
+        if (error) showToast(error.message, 'error'); else showToast("Email එක බලන්න!");
+    }
+
+    function showApp(user) {
+        currentUserId = user.id;
+        document.getElementById('auth-box').style.display = 'none';
+        document.getElementById('bookWrapper').classList.add('open');
+        document.getElementById('app-box').style.display = 'flex';
+        updateDateDisplay();
+        loadData(user.id);
+    }
+
+    async function saveData() {
+        const content = document.getElementById('myData').value;
+        if(!content) return;
+        const { error } = await _supabase.from('my_data').insert([{ user_id: currentUserId, content, created_at: new Date() }]);
+        if (error) showToast(error.message, 'error'); 
+        else { 
+            document.getElementById('myData').value = ""; 
+            showToast("සුරැකුණා!"); 
+            loadData(currentUserId); 
+        }
+    }
+
+    async function loadData(userId) {
+        const { data, error } = await _supabase.from('my_data').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) { console.error(error); return; }
+        allEntries = data || [];
+        renderBook(allEntries);
+    }
+
+    function renderBook(entries) {
+        const container = document.getElementById('bookContainer');
+        container.innerHTML = "";
+        
+        if (entries.length === 0) {
+            container.innerHTML = "<div class='flip-page' style='justify-content:center; text-align:center;'>තවම සටහන් කිසිවක් නැත.</div>";
+            return;
+        }
+
+        entries.forEach((item, index) => {
+            const dateStr = new Date(item.created_at).toLocaleDateString(language === 'si' ? 'si-LK' : 'en-US');
+            const page = document.createElement('div');
+            page.className = 'flip-page';
+            page.style.zIndex = entries.length - index;
+            page.innerHTML = `
+                <div style="font-weight:bold; color:var(--accent); border-bottom:1px solid #ddd; padding-bottom:5px;">${dateStr}</div>
+                <div style="flex:1; overflow-y:auto; line-height:31px; margin-top:10px; background-image:repeating-linear-gradient(transparent, transparent 30px, #ddd 30px, #ddd 31px); font-size:19px;">${item.content}</div>
+                <div class="delete-btn" onclick="openDeleteModal('${item.id}')">🗑 මකන්න / Delete</div>
+            `;
+            container.appendChild(page);
+        });
+        currentPageIndex = 0;
+    }
+
+    function openDeleteModal(id) { entryToDelete = id; document.getElementById('confirm-modal').style.display = 'flex'; }
+    function closeModal() { document.getElementById('confirm-modal').style.display = 'none'; }
+
+    document.getElementById('confirmYesBtn').onclick = async () => {
+        const { error } = await _supabase.from('my_data').delete().eq('id', entryToDelete);
+        closeModal();
+        if (error) showToast(error.message, 'error'); else { showToast(trans[language].deleted); loadData(currentUserId); }
+    };
+
+    function searchLogs() {
+        const sDate = document.getElementById('searchDate').value;
+        const sText = document.getElementById('searchText').value.toLowerCase();
+        let filtered = allEntries;
+        if(sDate) filtered = filtered.filter(e => e.created_at.includes(sDate));
+        if(sText) filtered = filtered.filter(e => e.content.toLowerCase().includes(sText));
+        renderBook(filtered);
+    }
+
+    function nextPage() {
+        const pages = document.querySelectorAll('.flip-page');
+        if (currentPageIndex < pages.length - 1) { 
+            pages[currentPageIndex].style.transform = 'rotateY(-170deg)'; 
+            currentPageIndex++; 
+        }
+    }
+    function prevPage() {
+        const pages = document.querySelectorAll('.flip-page');
+        if (currentPageIndex > 0) { 
+            currentPageIndex--; 
+            pages[currentPageIndex].style.transform = 'rotateY(0deg)'; 
+        }
+    }
+    function logout() { _supabase.auth.signOut(); location.reload(); }
+</script>
+</body>
+</html>
